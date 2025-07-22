@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
 from sqlalchemy import func, and_, or_
 from backend.models import db, Corrida, Motorista, Meta, MetricaDiaria, StatusCorrida, StatusMotorista
+from backend.services.cache_service import cache_service
 import logging
 
 logger = logging.getLogger(__name__)
@@ -10,12 +11,31 @@ bp = Blueprint('dashboard', __name__)
 
 @bp.route('/overview', methods=['GET'])
 def get_overview():
-    """Retorna overview geral do dashboard"""
+    """Retorna overview geral do dashboard com cache otimizado"""
     try:
         # Parâmetros de filtro
         municipio = request.args.get('municipio')
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
+        
+        # Criar chave de cache baseada nos parâmetros
+        cache_params = {
+            'municipio': municipio,
+            'start_date': start_date,
+            'end_date': end_date
+        }
+        
+        # Tentar recuperar do cache primeiro
+        cached_data = cache_service.get_dashboard_overview(cache_params)
+        if cached_data:
+            logger.info("📊 Overview recuperado do cache")
+            return jsonify({
+                'success': True,
+                'data': cached_data,
+                'from_cache': True
+            })
+        
+        logger.info("📊 Gerando overview - cache miss")
         
         # Definir período padrão (todos os dados se não especificado)
         if not start_date:
@@ -118,31 +138,39 @@ def get_overview():
         if previous_receita > 0:
             variacao_receita = ((receita_total - previous_receita) / previous_receita) * 100
         
+        # Preparar dados para resposta e cache
+        response_data = {
+            'periodo': {
+                'start_date': start_date.isoformat(),
+                'end_date': end_date.isoformat(),
+                'municipio': municipio
+            },
+            'metricas_principais': {
+                'total_corridas': total_corridas,
+                'corridas_concluidas': corridas_concluidas,
+                'corridas_canceladas': corridas_canceladas,
+                'corridas_perdidas': corridas_perdidas,
+                'taxa_conversao': round(taxa_conversao, 2),
+                'receita_total': float(receita_total),
+                'receita_media_corrida': round(float(receita_media), 2),
+                'motoristas_ativos': motoristas_ativos,
+                'usuarios_unicos': usuarios_unicos,
+                'avaliacao_media': round(float(avaliacao_media), 2)
+            },
+            'comparacao_anterior': {
+                'variacao_corridas': round(variacao_corridas, 2),
+                'variacao_receita': round(variacao_receita, 2)
+            }
+        }
+        
+        # Armazenar no cache (5 minutos TTL)
+        cache_service.set_dashboard_overview(cache_params, response_data, 300)
+        logger.info("📊 Overview armazenado no cache")
+        
         return jsonify({
             'success': True,
-            'data': {
-                'periodo': {
-                    'start_date': start_date.isoformat(),
-                    'end_date': end_date.isoformat(),
-                    'municipio': municipio
-                },
-                'metricas_principais': {
-                    'total_corridas': total_corridas,
-                    'corridas_concluidas': corridas_concluidas,
-                    'corridas_canceladas': corridas_canceladas,
-                    'corridas_perdidas': corridas_perdidas,
-                    'taxa_conversao': round(taxa_conversao, 2),
-                    'receita_total': float(receita_total),
-                    'receita_media_corrida': round(float(receita_media), 2),
-                    'motoristas_ativos': motoristas_ativos,
-                    'usuarios_unicos': usuarios_unicos,
-                    'avaliacao_media': round(float(avaliacao_media), 2)
-                },
-                'comparacao_anterior': {
-                    'variacao_corridas': round(variacao_corridas, 2),
-                    'variacao_receita': round(variacao_receita, 2)
-                }
-            }
+            'data': response_data,
+            'from_cache': False
         })
         
     except Exception as e:

@@ -51,12 +51,14 @@ Um dashboard moderno e interativo para análise de dados de mobilidade urbana, d
 
 ## 🚀 Instalação e Execução
 
-### Pré-requisitos
+### **🏠 Desenvolvimento Local**
+
+#### Pré-requisitos
 - Node.js 16+
 - Python 3.8+
 - npm ou yarn
 
-### Frontend
+#### Frontend
 ```bash
 # Instalar dependências
 npm install
@@ -68,18 +70,41 @@ npm run dev
 npm run build
 ```
 
-### Backend
+#### Backend
 ```bash
 # Instalar dependências Python
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 
 # Executar servidor Flask
 python main.py
 ```
 
+### **� Deploy com Docker (Easypanel)**
+
+#### Deploy Rápido
+```bash
+# Tornar script executável e executar
+chmod +x deploy_easypanel.sh
+./deploy_easypanel.sh
+```
+
+#### Deploy Manual
+```bash
+# Build da imagem
+docker build -t dashboard-mobilidade-urbana .
+
+# Executar container
+docker run -p 8080:8080 \
+  -e FLASK_ENV=production \
+  -e DATABASE_URL=postgresql://user:pass@host:5432/db \
+  dashboard-mobilidade-urbana
+```
+
+📋 **Guia completo**: Ver [`DEPLOY_EASYPANEL.md`](DEPLOY_EASYPANEL.md)
+
 ## 📱 Acesso
-- **Frontend**: http://localhost:3000
-- **Backend**: http://localhost:5000
+- **Desenvolvimento**: http://localhost:3000 (frontend) + http://localhost:5000 (backend)
+- **Produção**: URL fornecida pelo Easypanel
 
 ## 📁 Estrutura do Projeto
 

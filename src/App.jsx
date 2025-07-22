@@ -4,6 +4,8 @@ import { Car, Users, Target, TrendingUp, Clock, Star, BarChart3, Settings, Filte
 import { GraficosAvancados } from './components/GraficosAvancados';
 import { ResumoPerformance } from './components/ResumoPerformance';
 import { SistemaNotificacoes } from './components/SistemaNotificacoes';
+import ChatLLM from './components/ChatLLM';
+import SistemaIA from './components/SistemaIA';
 
 function App() {
   const [activeView, setActiveView] = useState('overview');
@@ -68,6 +70,7 @@ function App() {
   const sidebarItems = [
     { id: 'overview', label: 'Visão Geral', icon: TrendingUp },
     { id: 'performance', label: 'Performance', icon: Activity },
+    { id: 'ia', label: 'Sistema de IA', icon: Brain },
     { id: 'alertas', label: 'Sistema de Alertas', icon: Bell },
     { id: 'importacao', label: 'Importação de Dados', icon: Database },
     { id: 'graficos', label: 'Análises Avançadas', icon: BarChart3 },
@@ -148,6 +151,7 @@ function App() {
           >
             {activeView === 'overview' && <OverviewPage data={dashboardData} />}
             {activeView === 'performance' && <ResumoPerformance data={dashboardData} loading={loading} />}
+            {activeView === 'ia' && <SistemaIA />}
             {activeView === 'alertas' && <AlertasPage />}
             {activeView === 'importacao' && <ImportacaoPage />}
             {activeView === 'graficos' && <GraficosPage data={dashboardData} loading={loading} />}
@@ -159,6 +163,9 @@ function App() {
           </motion.div>
         </main>
       </div>
+      
+      {/* Chat LLM */}
+      <ChatLLM />
     </div>
   );
 }

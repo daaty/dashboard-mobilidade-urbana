@@ -1,5 +1,5 @@
 import os
-from flask import Flask
+from flask import Flask, send_from_directory, send_file
 from flask_cors import CORS
 # Import configuration mapping to select proper config by environment
 from backend.config.config import config as config_map
@@ -45,6 +45,26 @@ def create_app():
     
     from backend.api.metrics import bp as metrics_bp
     app.register_blueprint(metrics_bp, url_prefix='/api/metrics')
+    
+    from backend.api.llm import bp as llm_bp
+    app.register_blueprint(llm_bp, url_prefix='/api/llm')
+    
+    # Servir arquivos estáticos do frontend (para produção)
+    @app.route('/')
+    def serve_frontend():
+        """Servir o index.html do frontend"""
+        static_dir = os.path.join(app.root_path, '..', 'static')
+        return send_file(os.path.join(static_dir, 'index.html'))
+    
+    @app.route('/<path:path>')
+    def serve_static_files(path):
+        """Servir arquivos estáticos do frontend"""
+        static_dir = os.path.join(app.root_path, '..', 'static')
+        try:
+            return send_from_directory(static_dir, path)
+        except:
+            # Se arquivo não encontrado, retornar index.html (SPA behavior)
+            return send_file(os.path.join(static_dir, 'index.html'))
     
     # Criar tabelas do banco de dados
     with app.app_context():

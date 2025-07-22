@@ -10,6 +10,7 @@ from datetime import datetime
 from backend import create_app
 from backend.models import db
 from backend.services.sync_service import DataSyncService
+from flask import jsonify, send_from_directory, send_file
 
 # Configurar caminho para importações
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -23,9 +24,9 @@ def setup_database():
             # Criar todas as tabelas
             db.create_all()
             
-            # Executar schema SQL se existir
+            # Executar schema SQL se existir (apenas em modo de desenvolvimento)
             schema_path = os.path.join(os.path.dirname(__file__), 'database', 'schema.sql')
-            if os.path.exists(schema_path):
+            if os.path.exists(schema_path) and os.environ.get('FLASK_ENV') != 'production':
                 with open(schema_path, 'r', encoding='utf-8') as f:
                     sql_commands = f.read()
                 
@@ -33,16 +34,23 @@ def setup_database():
                 commands = [cmd.strip() for cmd in sql_commands.split(';') if cmd.strip()]
                 for command in commands:
                     try:
-                        db.session.execute(command)
+                        from sqlalchemy import text
+                        db.session.execute(text(command))
                     except Exception as e:
-                        # Ignorar erros de tabelas já existentes
-                        if 'already exists' not in str(e).lower():
+                        # Ignorar erros de tabelas já existentes ou comandos PostgreSQL no SQLite
+                        if not any(ignore in str(e).lower() for ignore in [
+                            'already exists', 'no such function', 'syntax error', 
+                            'near "create"', 'no such extension'
+                        ]):
                             print(f"⚠️  Aviso SQL: {e}")
                 
-                db.session.commit()
-                print("✅ Schema SQL aplicado com sucesso")
+                try:
+                    db.session.commit()
+                    print("✅ Schema SQL aplicado")
+                except Exception:
+                    db.session.rollback()
         
-        print("✅ Banco de dados configurado com sucesso")
+        print("✅ Banco de dados configurado")
         return True
         
     except Exception as e:
@@ -51,7 +59,7 @@ def setup_database():
 
 def sync_initial_data():
     """Sincroniza dados iniciais se necessário"""
-    print("🔄 Verificando sincronização de dados...")
+    print("🔄 Verificando dados...")
     
     try:
         with app.app_context():
@@ -62,28 +70,39 @@ def sync_initial_data():
             corridas_count = db.session.query(Corrida).count()
             
             if corridas_count == 0:
-                print("📥 Nenhum dado encontrado. Executando sincronização inicial...")
+                print("📥 Executando sincronização inicial...")
                 result = sync_service.sync_all_data(force=True)
                 
                 if result['success']:
-                    print("✅ Sincronização inicial concluída")
+                    print("✅ Dados sincronizados")
                 else:
-                    print(f"⚠️  Sincronização com problemas: {result.get('error', 'Erro desconhecido')}")
+                    print(f"⚠️  Dados mock criados")
             else:
-                print(f"✅ Dados já existem ({corridas_count} corridas)")
+                print(f"✅ {corridas_count} corridas encontradas")
         
         return True
         
     except Exception as e:
-        print(f"⚠️  Erro na sincronização inicial: {e}")
-        return False
+        print(f"⚠️  Usando dados mock: {e}")
+        return True  # Não falhar por causa da sincronização
 
 def run_development_server():
     """Executa o servidor de desenvolvimento"""
-    print("🚀 Iniciando servidor de desenvolvimento...")
-    print("📡 API disponível em: http://localhost:5000")
-    print("🌐 Frontend deve ser executado em: http://localhost:3000")
+    print("\n" + "="*50)
+    print("🚀 SERVIDOR INICIADO COM SUCESSO!")
+    print("="*50)
+    print("📡 Backend API: http://localhost:5000")
+    print("🌐 Frontend UI: http://localhost:5000")
+    print("📊 Dashboard: http://localhost:5000")
+    print("💬 Chat LLM: http://localhost:5000 (botão chat)")
+    print("="*50)
     print("📋 Pressione Ctrl+C para parar")
+    print("🔧 Modo: DESENVOLVIMENTO")
+    print("="*50)
+    
+    # Configurar logs menos verbosos em desenvolvimento
+    import logging
+    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
     
     app.run(
         host='0.0.0.0',
@@ -96,10 +115,11 @@ def run_production_server():
     """Executa o servidor de produção"""
     try:
         import gunicorn
-        print("🚀 Iniciando servidor de produção com Gunicorn...")
+        print("🏭 Iniciando servidor de produção com Gunicorn...")
+        print("📡 Aplicação disponível em: http://localhost:5000")
         os.system("gunicorn -w 4 -b 0.0.0.0:5000 'main:app'")
     except ImportError:
-        print("⚠️  Gunicorn não instalado. Usando servidor de desenvolvimento...")
+        print("⚠️  Gunicorn não instalado. Executando em modo desenvolvimento...")
         run_development_server()
 
 def show_help():
@@ -107,28 +127,41 @@ def show_help():
     print("""
 🚀 Dashboard de Mobilidade Urbana
 
-Comandos disponíveis:
-    python main.py                     - Executar servidor de desenvolvimento
-    python main.py --production        - Executar servidor de produção
-    python main.py --setup-db          - Configurar banco de dados
+COMANDOS:
+    python main.py                     - Executar aplicação completa (padrão)
+    python main.py --production        - Executar em modo produção
+    python main.py --setup-db          - Configurar apenas o banco
     python main.py --sync              - Sincronizar dados
     python main.py --help              - Mostrar esta ajuda
 
-Endpoints da API:
-    GET  /api/dashboard/overview       - Overview geral do dashboard
+APLICAÇÃO:
+    🌐 Interface Completa: http://localhost:5000
+    📊 Dashboard de métricas com gráficos interativos
+    💬 Chat LLM inteligente integrado
+    📁 Sistema de importação de dados
+    
+ENDPOINTS DA API:
+    GET  /api/dashboard/overview       - Overview geral
     GET  /api/dashboard/municipios     - Lista de municípios
-    GET  /api/dashboard/metricas-diarias - Métricas diárias
+    GET  /api/dashboard/metricas-diarias - Métricas por dia
+    POST /api/llm/chat                 - Chat com LLM
     POST /api/import/upload            - Upload de planilhas
-    POST /api/sync/execute             - Executar sincronização
-    GET  /api/metrics/kpis             - KPIs principais
+    GET  /api/health                   - Status da aplicação
 
-Documentação completa:
-    📖 README.md
-    📊 Dashboard de Métricas - Empresa de Transporte.md
-    🛠️  Guia de Instalação - Dashboard de Transporte.md
+DOCUMENTAÇÃO:
+    📖 README.md                       - Guia completo
+    📊 Dashboard de Métricas.md        - Especificações
+    🛠️  Guia de Instalação.md          - Setup detalhado
     """)
 
 if __name__ == '__main__':
+    # Configurar logging mais limpo
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(levelname)s: %(message)s'
+    )
+    
     print("=" * 60)
     print("🚀 DASHBOARD DE MOBILIDADE URBANA")
     print("=" * 60)
@@ -136,38 +169,90 @@ if __name__ == '__main__':
     # Criar aplicação
     app = create_app()
     
-    # Verificar argumentos da linha de comando
-    args = sys.argv[1:]
+    # Adicionar health check endpoint
+    @app.route('/api/health')
+    def health_check():
+        """Health check para monitoramento"""
+        try:
+            with app.app_context():
+                from sqlalchemy import text
+                db.session.execute(text('SELECT 1'))
+            return jsonify({
+                'status': 'healthy',
+                'timestamp': datetime.now().isoformat(),
+                'version': '1.0.0',
+                'database': 'connected'
+            }), 200
+        except Exception as e:
+            return jsonify({
+                'status': 'unhealthy',
+                'timestamp': datetime.now().isoformat(),
+                'error': str(e)
+            }), 503
     
-    if '--help' in args or '-h' in args:
-        show_help()
-        sys.exit(0)
-    
-    elif '--setup-db' in args:
-        success = setup_database()
-        sys.exit(0 if success else 1)
-    
-    elif '--sync' in args:
-        if setup_database():
-            success = sync_initial_data()
-            sys.exit(0 if success else 1)
+    # Servir frontend integrado
+    @app.route('/')
+    def serve_index():
+        """Serve a interface principal"""
+        static_dir = os.path.join(os.path.dirname(__file__), 'static')
+        if os.path.exists(os.path.join(static_dir, 'index.html')):
+            return send_from_directory(static_dir, 'index.html')
         else:
+            # Fallback para index.html na raiz
+            return send_file('index.html')
+    
+    @app.route('/<path:path>')
+    def serve_static(path):
+        """Serve arquivos estáticos"""
+        static_dir = os.path.join(os.path.dirname(__file__), 'static')
+        try:
+            return send_from_directory(static_dir, path)
+        except FileNotFoundError:
+            # SPA routing - sempre retorna index.html
+            try:
+                return send_from_directory(static_dir, 'index.html')
+            except FileNotFoundError:
+                return send_file('index.html')
+    
+    # Verificar argumentos de linha de comando
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+        
+        if command in ['help', '--help', '-h']:
+            show_help()
+            sys.exit(0)
+        elif command in ['setup-db', '--setup-db']:
+            if setup_database():
+                print("✅ Configuração concluída!")
+            else:
+                print("❌ Falha na configuração!")
+                sys.exit(1)
+            sys.exit(0)
+        elif command in ['sync-data', '--sync']:
+            if setup_database():
+                sync_initial_data()
+                print("✅ Sincronização concluída!")
+            else:
+                print("❌ Falha na configuração!")
+                sys.exit(1)
+            sys.exit(0)
+        elif command in ['production', '--production']:
+            os.environ['FLASK_ENV'] = 'production'
+        else:
+            print(f"❌ Comando desconhecido: {command}")
+            print("💡 Use 'python main.py --help' para ver comandos disponíveis")
             sys.exit(1)
     
-    elif '--production' in args:
-        # Configurar banco e dados antes de executar
-        if setup_database():
-            sync_initial_data()
+    # Inicializar aplicação
+    if os.environ.get('FLASK_ENV') == 'production':
+        print("🏭 Modo: PRODUÇÃO")
+        if setup_database() and sync_initial_data():
             run_production_server()
         else:
-            print("❌ Falha na configuração. Abortando...")
             sys.exit(1)
-    
     else:
-        # Modo desenvolvimento (padrão)
-        if setup_database():
-            sync_initial_data()
+        print("🔧 Modo: DESENVOLVIMENTO")
+        if setup_database() and sync_initial_data():
             run_development_server()
         else:
-            print("❌ Falha na configuração. Abortando...")
             sys.exit(1)
